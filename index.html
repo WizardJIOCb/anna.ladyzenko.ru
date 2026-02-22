@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Художник Анна Ладыженко</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <div class="profile-pic-wrap">
+        <img id="profilePic" class="profile-pic" alt="Анна Ладыженко" />
+      </div>
+      <h1 class="hero-name">Анна Ладыженко</h1>
+      <p class="hero-tagline">Художник</p>
+      <div class="hero-bio" id="heroBio"></div>
+      <div class="hero-stats" id="heroStats"></div>
+      <div class="hero-links">
+        <a href="https://www.youtube.com/user/AnnaKalimullina2000" target="_blank" class="hero-link">YouTube</a>
+        <a href="https://www.instagram.com/anna_ladyzenko/" target="_blank" class="hero-link">Instagram</a>
+      </div>
+    </div>
+    <div class="scroll-hint">
+      <span>&#x25BC;</span>
+    </div>
+  </header>
+
+  <!-- Filter / Search Bar -->
+  <nav class="toolbar">
+    <div class="toolbar-inner">
+      <input type="text" id="searchInput" class="search-input" placeholder="Поиск по постам..." />
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="all">Все</button>
+        <button class="filter-btn" data-filter="image">Фото</button>
+        <button class="filter-btn" data-filter="video">Видео</button>
+        <button class="filter-btn" data-filter="carousel">Карусели</button>
+      </div>
+      <div class="sort-group">
+        <select id="sortSelect" class="sort-select">
+          <option value="newest">Сначала новые</option>
+          <option value="oldest">Сначала старые</option>
+          <option value="popular">По популярности</option>
+        </select>
+      </div>
+      <button id="downloadAllBtn" class="download-all-btn" title="Скачать скрипт для массового скачивания">
+        &#x2B07; Скачать все файлы
+      </button>
+    </div>
+  </nav>
+
+  <!-- Gallery -->
+  <main class="gallery-section">
+    <div class="gallery-info">
+      <span id="postCount"></span>
+    </div>
+    <div class="gallery" id="gallery"></div>
+    <div class="load-more-wrap">
+      <button id="loadMoreBtn" class="load-more-btn">Загрузить ещё</button>
+    </div>
+  </main>
+
+  <!-- Lightbox / Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <button class="modal-close" id="modalClose">&times;</button>
+      <button class="modal-nav modal-prev" id="modalPrev">&#x276E;</button>
+      <button class="modal-nav modal-next" id="modalNext">&#x276F;</button>
+      <div class="modal-content">
+        <div class="modal-media" id="modalMedia"></div>
+        <div class="modal-sidebar">
+          <div class="modal-header">
+            <img class="modal-avatar" id="modalAvatar" alt="" />
+            <div>
+              <div class="modal-username">anna_ladyzenko</div>
+              <div class="modal-date" id="modalDate"></div>
+            </div>
+          </div>
+          <div class="modal-caption" id="modalCaption"></div>
+          <div class="modal-stats" id="modalStats"></div>
+          <div class="modal-downloads" id="modalDownloads"></div>
+          <!-- Carousel dots -->
+          <div class="carousel-controls" id="carouselControls"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>&copy; Художник Анна Ладыженко &mdash; Галерея работ</p>
+    <p class="footer-sub">Рисую &bull; Обучаю &bull; Вдохновляю</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
