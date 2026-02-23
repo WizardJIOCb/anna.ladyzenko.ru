@@ -25,6 +25,7 @@ async function init() {
   renderProfile();
   applyFilters();
   setupListeners();
+  openPostFromHash();
 }
 
 // ---- Profile ----
@@ -139,6 +140,9 @@ function openModal(index) {
   currentCarouselIndex = 0;
   const post = filteredPosts[index];
 
+  // Update URL hash for sharing
+  history.replaceState(null, '', '#post=' + post.code);
+
   renderModalMedia(post, 0);
   document.getElementById('modalDate').textContent = formatDate(post.taken_at);
   document.getElementById('modalCaption').textContent = post.caption || '';
@@ -160,6 +164,31 @@ function openModal(index) {
     a.textContent = `\u2B07 ${label}`;
     dlContainer.appendChild(a);
   });
+
+  // Share button
+  const shareContainer = document.getElementById('modalShare');
+  shareContainer.innerHTML = '';
+  const shareBtn = document.createElement('button');
+  shareBtn.className = 'modal-share-btn';
+  shareBtn.innerHTML = '\u{1F517} Скопировать ссылку';
+  shareBtn.addEventListener('click', () => {
+    const url = window.location.origin + window.location.pathname + '#post=' + post.code;
+    navigator.clipboard.writeText(url).then(() => {
+      shareBtn.textContent = '\u2714 Ссылка скопирована!';
+      setTimeout(() => { shareBtn.innerHTML = '\u{1F517} Скопировать ссылку'; }, 2000);
+    }).catch(() => {
+      // Fallback for older browsers
+      const input = document.createElement('input');
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      shareBtn.textContent = '\u2714 Ссылка скопирована!';
+      setTimeout(() => { shareBtn.innerHTML = '\u{1F517} Скопировать ссылку'; }, 2000);
+    });
+  });
+  shareContainer.appendChild(shareBtn);
 
   // Carousel dots
   const controls = document.getElementById('carouselControls');
@@ -208,6 +237,8 @@ function closeModal() {
   // Stop any playing video
   const vid = document.querySelector('.modal-media video');
   if (vid) vid.pause();
+  // Clear URL hash
+  history.replaceState(null, '', window.location.pathname + window.location.search);
 }
 
 function navigateModal(dir) {
@@ -273,6 +304,37 @@ function downloadAllScript() {
   URL.revokeObjectURL(a.href);
 }
 
+// ---- Deep Link ----
+function openPostFromHash() {
+  const hash = window.location.hash;
+  if (!hash.startsWith('#post=')) return;
+  const code = hash.substring(6);
+  // Find the post index in filteredPosts by code
+  let index = filteredPosts.findIndex(p => p.code === code);
+  if (index !== -1) {
+    // Make sure the post is rendered in the gallery (load enough batches)
+    while (displayedCount <= index) {
+      loadMore();
+    }
+    openModal(index);
+    return;
+  }
+  // If not found in filtered, reset filters to show all and try again
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const allBtn = document.querySelector('.filter-btn[data-filter="all"]');
+  if (allBtn) allBtn.classList.add('active');
+  document.getElementById('searchInput').value = '';
+  document.getElementById('sortSelect').value = 'newest';
+  applyFilters();
+  index = filteredPosts.findIndex(p => p.code === code);
+  if (index !== -1) {
+    while (displayedCount <= index) {
+      loadMore();
+    }
+    openModal(index);
+  }
+}
+
 // ---- Helpers ----
 function formatDate(ts) {
   const d = new Date(ts * 1000);
@@ -327,6 +389,16 @@ function setupListeners() {
     if (e.key === 'Escape') closeModal();
     if (e.key === 'ArrowLeft') navigateModal(-1);
     if (e.key === 'ArrowRight') navigateModal(1);
+  });
+
+  // Handle browser back/forward
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#post=')) {
+      openPostFromHash();
+    } else if (document.getElementById('modalOverlay').classList.contains('open')) {
+      closeModal();
+    }
   });
 }
 

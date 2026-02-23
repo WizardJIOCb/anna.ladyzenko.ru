@@ -572,6 +572,33 @@ body {
   flex-wrap: wrap;
 }
 
+.modal-share {
+  margin-top: 0.8rem;
+}
+
+.modal-share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--sage);
+  border-radius: 20px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: var(--brown);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+  justify-content: center;
+}
+
+.modal-share-btn:hover {
+  background: var(--sage);
+  color: white;
+}
+
 .carousel-dot {
   width: 10px;
   height: 10px;
