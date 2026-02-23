@@ -2,17 +2,101 @@
    Художник Анна Ладыженко — App Logic
    ============================================ */
 
+const API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:3000'
+  : '';  // In production, API is on the same domain via nginx proxy
+
 let DATA = { profile: {}, posts: [] };
 let filteredPosts = [];
 let displayedCount = 0;
 const BATCH = 30;
 let currentModalIndex = -1;
 let currentCarouselIndex = 0;
+let currentUser = null;
+
+// ---- API helpers ----
+async function api(path, options = {}) {
+  const res = await fetch(API_BASE + path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  });
+  if (!res.ok && res.status !== 401) {
+    const err = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(err.error || 'Request failed');
+  }
+  return res;
+}
+
+// ---- Auth ----
+async function checkSession() {
+  try {
+    const res = await api('/api/auth/me');
+    if (res.ok) {
+      currentUser = await res.json();
+    }
+  } catch { /* not logged in */ }
+  renderAuthUI();
+}
+
+function renderAuthUI() {
+  const container = document.getElementById('authContainer');
+  const signInBtn = document.getElementById('googleSignInBtn');
+  const userInfo = document.getElementById('userInfo');
+
+  if (currentUser) {
+    signInBtn.style.display = 'none';
+    userInfo.style.display = 'flex';
+    document.getElementById('userAvatar').src = currentUser.avatar_url || '';
+    document.getElementById('userName').textContent = currentUser.name;
+    // Hide guest name field in comment form
+    const guestInput = document.getElementById('commentGuestName');
+    if (guestInput) guestInput.style.display = 'none';
+  } else {
+    userInfo.style.display = 'none';
+    signInBtn.style.display = '';
+    initGoogleSignIn();
+    const guestInput = document.getElementById('commentGuestName');
+    if (guestInput) guestInput.style.display = '';
+  }
+}
+
+function initGoogleSignIn() {
+  const clientId = document.querySelector('meta[name="google-client-id"]')?.content;
+  if (!clientId || typeof google === 'undefined') return;
+
+  google.accounts.id.initialize({
+    client_id: clientId,
+    callback: handleGoogleCredential,
+  });
+  google.accounts.id.renderButton(
+    document.getElementById('googleSignInBtn'),
+    { theme: 'outline', size: 'medium', text: 'signin_with', locale: 'ru' }
+  );
+}
+
+async function handleGoogleCredential(response) {
+  try {
+    const res = await api('/api/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential: response.credential }),
+    });
+    currentUser = await res.json();
+    renderAuthUI();
+  } catch (err) {
+    console.error('Auth failed:', err);
+  }
+}
+
+async function logout() {
+  await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  currentUser = null;
+  renderAuthUI();
+}
 
 // ---- Load Data ----
 async function init() {
   try {
-    // Try local version first (has downloaded media paths), fallback to original
     let resp = await fetch('data/instagram_data_local.json');
     if (!resp.ok) resp = await fetch('data/instagram_data.json');
     DATA = await resp.json();
@@ -25,6 +109,7 @@ async function init() {
   renderProfile();
   applyFilters();
   setupListeners();
+  checkSession();
   openPostFromHash();
 }
 
@@ -48,18 +133,13 @@ function applyFilters() {
   const sort = document.getElementById('sortSelect').value;
 
   filteredPosts = DATA.posts.filter(post => {
-    // Type filter
     if (activeFilter === 'image' && (post.media.length > 1 || post.media[0]?.type === 'video')) return false;
     if (activeFilter === 'video' && !post.media.some(m => m.type === 'video')) return false;
     if (activeFilter === 'carousel' && post.media.length <= 1) return false;
-
-    // Search
     if (search && !post.caption.toLowerCase().includes(search)) return false;
-
     return true;
   });
 
-  // Sort
   if (sort === 'newest') filteredPosts.sort((a, b) => b.taken_at - a.taken_at);
   else if (sort === 'oldest') filteredPosts.sort((a, b) => a.taken_at - b.taken_at);
   else if (sort === 'popular') filteredPosts.sort((a, b) => b.like_count - a.like_count);
@@ -73,9 +153,11 @@ function applyFilters() {
 function loadMore() {
   const gallery = document.getElementById('gallery');
   const end = Math.min(displayedCount + BATCH, filteredPosts.length);
+  const newCodes = [];
 
   for (let i = displayedCount; i < end; i++) {
     gallery.appendChild(createCard(filteredPosts[i], i));
+    newCodes.push(filteredPosts[i].code);
   }
 
   displayedCount = end;
@@ -89,6 +171,25 @@ function loadMore() {
     btn.disabled = false;
     btn.textContent = `Загрузить ещё (осталось ${filteredPosts.length - displayedCount})`;
   }
+
+  // Bulk fetch like counts for displayed cards
+  if (newCodes.length > 0) {
+    fetchBulkLikes(newCodes);
+  }
+}
+
+async function fetchBulkLikes(codes) {
+  try {
+    const res = await api('/api/posts/likes?codes=' + codes.join(','));
+    const data = await res.json();
+    for (const [code, info] of Object.entries(data)) {
+      const card = document.querySelector(`.card[data-code="${code}"]`);
+      if (card) {
+        const likeSpan = card.querySelector('.card-like-count');
+        if (likeSpan) likeSpan.textContent = info.total_likes;
+      }
+    }
+  } catch { /* API unavailable, keep original counts */ }
 }
 
 // ---- Card ----
@@ -96,6 +197,7 @@ function createCard(post, index) {
   const card = document.createElement('div');
   card.className = 'card';
   card.dataset.index = index;
+  card.dataset.code = post.code;
 
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.type === 'video';
@@ -122,7 +224,7 @@ function createCard(post, index) {
     </div>
     <div class="card-footer">
       <div class="card-stats">
-        <span>&#x2764; ${post.like_count}</span>
+        <span>&#x2764; <span class="card-like-count">${post.like_count}</span></span>
         <span>&#x1F4AC; ${post.comment_count}</span>
       </div>
       <button class="card-download" onclick="event.stopPropagation(); downloadPostMedia(${index})">&#x2B07; Скачать</button>
@@ -140,13 +242,12 @@ function openModal(index) {
   currentCarouselIndex = 0;
   const post = filteredPosts[index];
 
-  // Update URL hash for sharing
   history.replaceState(null, '', '#post=' + post.code);
 
   renderModalMedia(post, 0);
   document.getElementById('modalDate').textContent = formatDate(post.taken_at);
   document.getElementById('modalCaption').textContent = post.caption || '';
-  document.getElementById('modalStats').innerHTML = `&#x2764; ${post.like_count} &nbsp;&bull;&nbsp; &#x1F4AC; ${post.comment_count}`;
+  document.getElementById('modalStats').innerHTML = `&#x1F4AC; ${post.comment_count} (Instagram)`;
 
   // Download buttons
   const dlContainer = document.getElementById('modalDownloads');
@@ -177,7 +278,6 @@ function openModal(index) {
       shareBtn.textContent = '\u2714 Ссылка скопирована!';
       setTimeout(() => { shareBtn.innerHTML = '\u{1F517} Скопировать ссылку'; }, 2000);
     }).catch(() => {
-      // Fallback for older browsers
       const input = document.createElement('input');
       input.value = url;
       document.body.appendChild(input);
@@ -208,6 +308,10 @@ function openModal(index) {
 
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // Load likes and comments from API
+  loadPostLikes(post.code);
+  loadComments(post.code);
 }
 
 function renderModalMedia(post, mediaIndex) {
@@ -234,17 +338,14 @@ function updateCarouselDots() {
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   document.body.style.overflow = '';
-  // Stop any playing video
   const vid = document.querySelector('.modal-media video');
   if (vid) vid.pause();
-  // Clear URL hash
   history.replaceState(null, '', window.location.pathname + window.location.search);
 }
 
 function navigateModal(dir) {
   const post = filteredPosts[currentModalIndex];
   if (post.media.length > 1) {
-    // Navigate within carousel first
     const next = currentCarouselIndex + dir;
     if (next >= 0 && next < post.media.length) {
       currentCarouselIndex = next;
@@ -253,10 +354,241 @@ function navigateModal(dir) {
       return;
     }
   }
-  // Navigate between posts
   const newIndex = currentModalIndex + dir;
   if (newIndex >= 0 && newIndex < filteredPosts.length) {
     openModal(newIndex);
+  }
+}
+
+// ---- Post Likes ----
+async function loadPostLikes(postCode) {
+  const btn = document.getElementById('modalLikeBtn');
+  const heartIcon = document.getElementById('modalHeartIcon');
+  const countEl = document.getElementById('modalLikeCount');
+
+  try {
+    const res = await api('/api/posts/' + postCode + '/likes');
+    const data = await res.json();
+    countEl.textContent = data.total_likes;
+    btn.classList.toggle('liked', data.liked);
+    heartIcon.innerHTML = data.liked ? '&#x2764;' : '&#x2661;';
+  } catch {
+    // API unavailable — show Instagram count
+    const post = filteredPosts[currentModalIndex];
+    countEl.textContent = post?.like_count || 0;
+  }
+
+  // Set up click handler (replace to avoid duplicates)
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.addEventListener('click', () => togglePostLike(postCode));
+}
+
+async function togglePostLike(postCode) {
+  const btn = document.getElementById('modalLikeBtn');
+  const heartIcon = document.getElementById('modalHeartIcon');
+  const countEl = document.getElementById('modalLikeCount');
+  const isLiked = btn.classList.contains('liked');
+
+  // Optimistic update
+  btn.classList.toggle('liked');
+  heartIcon.innerHTML = isLiked ? '&#x2661;' : '&#x2764;';
+  btn.classList.add('heart-pop');
+  setTimeout(() => btn.classList.remove('heart-pop'), 300);
+
+  try {
+    const res = await api('/api/posts/' + postCode + '/like', {
+      method: isLiked ? 'DELETE' : 'POST',
+    });
+    const data = await res.json();
+    countEl.textContent = data.total_likes;
+    btn.classList.toggle('liked', data.liked);
+    heartIcon.innerHTML = data.liked ? '&#x2764;' : '&#x2661;';
+
+    // Update gallery card
+    const card = document.querySelector(`.card[data-code="${postCode}"]`);
+    if (card) {
+      const likeSpan = card.querySelector('.card-like-count');
+      if (likeSpan) likeSpan.textContent = data.total_likes;
+    }
+  } catch {
+    // Rollback
+    btn.classList.toggle('liked');
+    heartIcon.innerHTML = isLiked ? '&#x2764;' : '&#x2661;';
+  }
+}
+
+// ---- Comments ----
+async function loadComments(postCode) {
+  const list = document.getElementById('commentsList');
+  const countEl = document.getElementById('commentsCount');
+  list.innerHTML = '<div class="comments-loading">Загрузка...</div>';
+
+  try {
+    const res = await api('/api/posts/' + postCode + '/comments');
+    const comments = await res.json();
+    list.innerHTML = '';
+
+    let totalCount = 0;
+    function countAll(arr) { arr.forEach(c => { totalCount++; countAll(c.replies || []); }); }
+    countAll(comments);
+    countEl.textContent = totalCount > 0 ? `(${totalCount})` : '';
+
+    if (comments.length === 0) {
+      list.innerHTML = '<div class="comments-empty">Пока нет комментариев. Будьте первым!</div>';
+      return;
+    }
+
+    comments.forEach(c => list.appendChild(renderComment(c, postCode, 0)));
+  } catch {
+    list.innerHTML = '<div class="comments-empty">Не удалось загрузить комментарии</div>';
+    countEl.textContent = '';
+  }
+}
+
+function renderComment(comment, postCode, depth) {
+  const el = document.createElement('div');
+  el.className = 'comment-item' + (depth > 0 ? ' comment-reply' : '');
+  el.dataset.id = comment.id;
+
+  const authorName = comment.user ? comment.user.name : (comment.guest_name || 'Гость');
+  const authorAvatar = comment.user?.avatar_url;
+  const dateStr = formatDate(comment.created_at);
+
+  el.innerHTML = `
+    <div class="comment-main">
+      <div class="comment-author-row">
+        ${authorAvatar ? `<img class="comment-avatar" src="${authorAvatar}" alt="" />` : '<div class="comment-avatar-placeholder"></div>'}
+        <span class="comment-author">${escapeHtml(authorName)}</span>
+        <span class="comment-date">${dateStr}</span>
+      </div>
+      <div class="comment-text">${escapeHtml(comment.text)}</div>
+      <div class="comment-actions">
+        <button class="comment-like-btn ${comment.liked_by_me ? 'liked' : ''}" data-id="${comment.id}">
+          ${comment.liked_by_me ? '&#x2764;' : '&#x2661;'} <span class="comment-like-count">${comment.likes || ''}</span>
+        </button>
+        ${depth === 0 ? `<button class="comment-reply-btn" data-id="${comment.id}">Ответить</button>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Like handler
+  el.querySelector('.comment-like-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCommentLike(comment.id, el.querySelector('.comment-like-btn'));
+  });
+
+  // Reply handler
+  const replyBtn = el.querySelector('.comment-reply-btn');
+  if (replyBtn) {
+    replyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showReplyForm(el, comment.id, postCode);
+    });
+  }
+
+  // Render replies
+  if (comment.replies && comment.replies.length > 0) {
+    const repliesContainer = document.createElement('div');
+    repliesContainer.className = 'comment-replies';
+    comment.replies.forEach(r => repliesContainer.appendChild(renderComment(r, postCode, depth + 1)));
+    el.appendChild(repliesContainer);
+  }
+
+  return el;
+}
+
+function showReplyForm(commentEl, parentId, postCode) {
+  // Remove existing reply forms
+  const existing = commentEl.querySelector('.reply-form');
+  if (existing) { existing.remove(); return; }
+
+  const form = document.createElement('div');
+  form.className = 'reply-form';
+  form.innerHTML = `
+    ${!currentUser ? '<input type="text" class="reply-guest-name" placeholder="Ваше имя" maxlength="50" />' : ''}
+    <div class="reply-form-row">
+      <textarea class="reply-textarea" placeholder="Ответить..." maxlength="2000"></textarea>
+      <button class="reply-submit">Отправить</button>
+    </div>
+  `;
+
+  form.querySelector('.reply-submit').addEventListener('click', async () => {
+    const text = form.querySelector('.reply-textarea').value.trim();
+    const guestInput = form.querySelector('.reply-guest-name');
+    const guestName = guestInput ? guestInput.value.trim() : null;
+
+    if (!text) return;
+    if (!currentUser && !guestName) {
+      guestInput.classList.add('input-error');
+      return;
+    }
+
+    try {
+      await api('/api/posts/' + postCode + '/comments', {
+        method: 'POST',
+        body: JSON.stringify({ text, guest_name: guestName, parent_id: parentId }),
+      });
+      loadComments(postCode);
+    } catch (err) {
+      console.error('Failed to post reply:', err);
+    }
+  });
+
+  commentEl.querySelector('.comment-main').after(form);
+  form.querySelector('.reply-textarea').focus();
+}
+
+async function toggleCommentLike(commentId, btnEl) {
+  const isLiked = btnEl.classList.contains('liked');
+  const countEl = btnEl.querySelector('.comment-like-count');
+
+  btnEl.classList.toggle('liked');
+  btnEl.innerHTML = `${isLiked ? '&#x2661;' : '&#x2764;'} <span class="comment-like-count">${countEl?.textContent || ''}</span>`;
+
+  try {
+    const res = await api('/api/comments/' + commentId + '/like', {
+      method: isLiked ? 'DELETE' : 'POST',
+    });
+    const data = await res.json();
+    btnEl.classList.toggle('liked', data.liked);
+    btnEl.innerHTML = `${data.liked ? '&#x2764;' : '&#x2661;'} <span class="comment-like-count">${data.total_likes || ''}</span>`;
+  } catch {
+    // Rollback
+    btnEl.classList.toggle('liked');
+    btnEl.innerHTML = `${isLiked ? '&#x2764;' : '&#x2661;'} <span class="comment-like-count">${countEl?.textContent || ''}</span>`;
+  }
+}
+
+async function submitComment() {
+  const post = filteredPosts[currentModalIndex];
+  if (!post) return;
+
+  const textEl = document.getElementById('commentText');
+  const guestEl = document.getElementById('commentGuestName');
+  const text = textEl.value.trim();
+  const guestName = guestEl ? guestEl.value.trim() : null;
+
+  if (!text) return;
+  if (!currentUser && !guestName) {
+    guestEl.classList.add('input-error');
+    return;
+  }
+
+  const submitBtn = document.getElementById('commentSubmit');
+  submitBtn.disabled = true;
+
+  try {
+    await api('/api/posts/' + post.code + '/comments', {
+      method: 'POST',
+      body: JSON.stringify({ text, guest_name: guestName }),
+    });
+    textEl.value = '';
+    loadComments(post.code);
+  } catch (err) {
+    console.error('Failed to post comment:', err);
+  } finally {
+    submitBtn.disabled = false;
   }
 }
 
@@ -277,7 +609,6 @@ function downloadPostMedia(index) {
 }
 
 function downloadAllScript() {
-  // Generate a simple download list as text file with all URLs
   let content = '# Список всех медиафайлов из аккаунта anna_ladyzenko\n';
   content += '# Для скачивания используйте wget или любой менеджер загрузок\n\n';
 
@@ -309,17 +640,14 @@ function openPostFromHash() {
   const hash = window.location.hash;
   if (!hash.startsWith('#post=')) return;
   const code = hash.substring(6);
-  // Find the post index in filteredPosts by code
   let index = filteredPosts.findIndex(p => p.code === code);
   if (index !== -1) {
-    // Make sure the post is rendered in the gallery (load enough batches)
     while (displayedCount <= index) {
       loadMore();
     }
     openModal(index);
     return;
   }
-  // If not found in filtered, reset filters to show all and try again
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   const allBtn = document.querySelector('.filter-btn[data-filter="all"]');
   if (allBtn) allBtn.classList.add('active');
@@ -391,13 +719,26 @@ function setupListeners() {
     if (e.key === 'ArrowRight') navigateModal(1);
   });
 
-  // Handle browser back/forward
+  // Browser back/forward
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash;
     if (hash.startsWith('#post=')) {
       openPostFromHash();
     } else if (document.getElementById('modalOverlay').classList.contains('open')) {
       closeModal();
+    }
+  });
+
+  // Logout
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  // Comment submit
+  document.getElementById('commentSubmit').addEventListener('click', submitComment);
+
+  // Submit comment on Ctrl+Enter
+  document.getElementById('commentText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      submitComment();
     }
   });
 }

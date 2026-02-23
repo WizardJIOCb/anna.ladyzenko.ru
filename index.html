@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="google-client-id" content="">
   <title>Художник Анна Ладыженко</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,6 +25,14 @@
       <div class="hero-links">
         <a href="https://www.youtube.com/user/AnnaKalimullina2000" target="_blank" class="hero-link">YouTube</a>
         <a href="https://www.instagram.com/anna_ladyzenko/" target="_blank" class="hero-link">Instagram</a>
+      </div>
+      <div class="auth-container" id="authContainer">
+        <div id="googleSignInBtn"></div>
+        <div class="user-info" id="userInfo" style="display:none">
+          <img class="user-avatar" id="userAvatar" alt="" />
+          <span id="userName"></span>
+          <button class="logout-btn" id="logoutBtn">Выйти</button>
+        </div>
       </div>
     </div>
     <div class="scroll-hint">
@@ -83,10 +92,28 @@
           </div>
           <div class="modal-caption" id="modalCaption"></div>
           <div class="modal-stats" id="modalStats"></div>
+          <div class="modal-interactions">
+            <button class="like-btn" id="modalLikeBtn">
+              <span class="heart-icon" id="modalHeartIcon">&#x2661;</span>
+              <span id="modalLikeCount">0</span>
+            </button>
+          </div>
           <div class="modal-downloads" id="modalDownloads"></div>
           <div class="modal-share" id="modalShare"></div>
           <!-- Carousel dots -->
           <div class="carousel-controls" id="carouselControls"></div>
+          <!-- Comments -->
+          <div class="comments-section" id="commentsSection">
+            <div class="comments-header">Комментарии <span id="commentsCount"></span></div>
+            <div class="comment-form" id="commentForm">
+              <input type="text" class="comment-guest-name" id="commentGuestName" placeholder="Ваше имя" maxlength="50" />
+              <div class="comment-form-row">
+                <textarea id="commentText" class="comment-textarea" placeholder="Напишите комментарий..." maxlength="2000"></textarea>
+                <button class="comment-submit" id="commentSubmit">Отправить</button>
+              </div>
+            </div>
+            <div class="comments-list" id="commentsList"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -98,6 +125,7 @@
     <p class="footer-sub">Рисую &bull; Обучаю &bull; Вдохновляю</p>
   </footer>
 
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="app.js"></script>
 </body>
 </html>

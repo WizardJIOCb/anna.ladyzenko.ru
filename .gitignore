@@ -10,7 +10,13 @@ site/
 # Скрипт загрузки
 download_media.py
 
+# Backend
+server/node_modules/
+server/.env
+data/site.db
+
 # Системные
 nul
 .DS_Store
 Thumbs.db
+__pycache__/
